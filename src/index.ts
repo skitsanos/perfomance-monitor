@@ -1,5 +1,5 @@
 import ProcessMonitor from './process-monitor.ts';
-import StatsCollector from '../stas-collector.ts';
+import StatsCollector from './stas-collector.ts';
 
 console.log('Performance Monitor');
 
