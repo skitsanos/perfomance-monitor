@@ -1,0 +1,14 @@
+version: 3
+
+silent: true
+
+tasks:
+  install:
+    cmds:
+      - bun install
+  update:
+    cmds:
+      - bun update
+  compile:
+    cmds:
+      - bun build src/index.ts --compile --minify --outfile dist/performance-monitor
