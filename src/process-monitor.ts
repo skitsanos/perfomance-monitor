@@ -8,36 +8,29 @@ export type ProcessStats = {
     pid: number;
 };
 
-export class ProcessMonitor
-{
+export class ProcessMonitor {
     private pid: number;
     private prevCpuTime = 0;
     private prevTimestamp = 0;
 
-    constructor(target: number | string)
-    {
+    constructor(target: number | string) {
         this.pid = typeof target === 'string'
-                   ? this.resolvePidByName(target)
-                   : target;
+            ? this.resolvePidByName(target)
+            : target;
     }
 
-    getStats(): ProcessStats | null
-    {
-        if (process.platform === 'win32')
-        {
+    getStats(): ProcessStats | null {
+        if (process.platform === 'win32') {
             return this.getWindowsStats();
-        }
-        else
-        {
+        } else {
             return this.getUnixStats();
         }
     }
 
-    private resolvePidByName(name: string): number
-    {
+    private resolvePidByName(name: string): number {
         const command = process.platform === 'win32'
-                        ? `Get-Process -Name "${name}" | Select-Object -ExpandProperty Id`
-                        : `pgrep -x "${name}" || pgrep -f "${name}"`;
+            ? `Get-Process -Name "${name}" | Select-Object -ExpandProperty Id`
+            : `pgrep -x "${name}" || pgrep -f "${name}"`;
 
         const result = spawnSync(
             process.platform === 'win32' ? 'powershell' : 'sh',
@@ -49,15 +42,13 @@ export class ProcessMonitor
         );
 
         const pids = result.stdout.trim().split('\n').filter(Boolean);
-        if (pids.length === 0)
-        {
+        if (pids.length === 0) {
             throw new Error(`Process "${name}" not found`);
         }
         return parseInt(pids[0], 10);
     }
 
-    private getWindowsProcessName(): string
-    {
+    private getWindowsProcessName(): string {
         const result = spawnSync('powershell', [
             '-Command',
             `(Get-Process -Id ${this.pid}).Name`
@@ -65,26 +56,35 @@ export class ProcessMonitor
         return result.stdout.trim();
     }
 
-    private getWindowsStats(): ProcessStats | null
-    {
-        const result = spawnSync('powershell', [
-            '-Command',
-            `Get-Counter '\\Process(${this.getWindowsProcessName()})\\% Processor Time','\\Process(${this.getWindowsProcessName()})\\Working Set' | ForEach-Object { $_.CounterSamples[0].CookedValue }`
-        ], {encoding: 'utf-8'});
+    private getWindowsStats(): ProcessStats | null {
+        //const processName = this.getWindowsProcessName();
+        const script = `
+        $process = Get-Process -Id ${this.pid};
+        $processName = $process.Name;
+        WriteOutput "$processName"
+        $cpu = (Get-Counter "\\Process($processName)\\% Processor Time" -ErrorAction SilentlyContinue).CounterSamples.CookedValue;
+        $memory = $process.WorkingSet64 / 1MB;
+        Write-Output "$cpu|$memory";
+        `;
 
-        const [cpu, memoryBytes] = result.stdout.trim().split('\n').map(parseFloat);
+        const result = spawnSync('powershell', ['-Command', script], {encoding: 'utf-8'});
+
+        if (result.error || result.status !== 0) {
+            console.error('PowerShell error:', result.stderr);
+            return null;
+        }
+
+        const [cpu, memory] = result.stdout.trim().split('|').map(parseFloat);
 
         return {
             cpu: cpu || 0,
-            memory: (memoryBytes || 0) / 1024 / 1024,
+            memory: memory || 0,
             pid: this.pid
         };
     }
 
-    private getUnixStats(): ProcessStats | null
-    {
-        try
-        {
+    private getUnixStats(): ProcessStats | null {
+        try {
             // Use ps command for macOS/Linux compatibility
             const result = spawnSync('ps', [
                 '-p',
@@ -94,8 +94,7 @@ export class ProcessMonitor
             ], {encoding: 'utf-8'});
 
             const output = result.stdout.trim().split('\n');
-            if (output.length < 2)
-            {
+            if (output.length < 2) {
                 return null;
             }
 
@@ -108,9 +107,7 @@ export class ProcessMonitor
                 memory,
                 pid: this.pid
             };
-        }
-        catch
-        {
+        } catch {
             return null;
         }
     }
